@@ -32,11 +32,11 @@
         }
         .title { text-align: center; color: #880E4F; font-size: 26px; font-weight: bold; padding: 15px 0; }
         .subtitle { text-align: center; color: #AD1457; font-size: 15px; margin-bottom: 15px; }
-        input {
+        input, select {
             width: 100%; padding: 12px; margin: 6px 0; border: 2px solid #F06292;
-            border-radius: 10px; font-size: 15px; outline: none;
+            border-radius: 10px; font-size: 15px; outline: none; background: white;
         }
-        input:focus { border-color: #E91E63; }
+        input:focus, select:focus { border-color: #E91E63; }
         .schedule-item {
             display: flex; justify-content: space-between; align-items: center;
             padding: 10px; margin: 4px 0; border-radius: 10px; flex-wrap: wrap;
@@ -59,15 +59,20 @@
             background: #FFF3E0; border-left: 4px solid #FF9800;
             padding: 10px; margin: 10px 0; border-radius: 8px;
         }
+        .notification-success {
+            background: #E8F5E9; border-left: 4px solid #4CAF50;
+            padding: 10px; margin: 10px 0; border-radius: 8px;
+        }
         .checkbox-label {
             display: flex; align-items: center; gap: 10px;
             font-size: 14px; color: #666; margin: 10px 0;
         }
         .checkbox-label input { width: auto; margin: 0; }
-        .nav-buttons {
-            display: flex; gap: 10px; margin: 10px 0;
+        .search-box {
+            display: flex; gap: 8px; margin: 10px 0;
         }
-        .nav-buttons .btn { flex: 1; }
+        .search-box select { width: auto; flex: 1; }
+        .search-box input { flex: 2; }
     </style>
 </head>
 <body>
@@ -93,6 +98,30 @@
         let currentUser = null;
         let allMasters = [];
         let notificationInterval = null;
+        
+        // Часовые пояса
+        const MSK_OFFSET = 3; // UTC+3 для Москвы
+        const SLOT_HOURS = [10, 12, 15, 17]; // 4 слота в день
+
+        // ============ ФУНКЦИИ ВРЕМЕНИ ============
+        function getMSKTime(date = null) {
+            const d = date || new Date();
+            return new Date(d.getTime() + MSK_OFFSET * 3600000);
+        }
+
+        function formatDateMSK(date) {
+            const msk = getMSKTime(new Date(date));
+            return msk.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+        }
+
+        function formatTimeMSK(date) {
+            const msk = getMSKTime(new Date(date));
+            return msk.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+        }
+
+        function formatDateTimeMSK(date) {
+            return formatDateMSK(date) + ' ' + formatTimeMSK(date);
+        }
 
         // ============ ЗАГРУЗКА ДАННЫХ ============
         async function loadData() {
@@ -118,9 +147,35 @@
             }
 
             if (currentUser) {
+                if (currentUser.role === 'master') {
+                    await cleanOldAppointments();
+                }
                 render(currentUser.role === 'master' ? 'masterDashboard' : 'clientDashboard');
             } else {
                 render('start');
+            }
+        }
+
+        // ============ ОЧИСТКА СТАРЫХ ЗАПИСЕЙ ============
+        async function cleanOldAppointments() {
+            if (!currentUser || currentUser.role !== 'master') return;
+            
+            const schedule = [...(currentUser.schedule || [])];
+            const now = getMSKTime();
+            let changed = false;
+
+            const newSchedule = schedule.filter(s => {
+                const slotTime = new Date(s.dateTime);
+                if (slotTime < now && !s.isAvailable) {
+                    changed = true;
+                    return false; // Удаляем прошедшие записи
+                }
+                return true;
+            });
+
+            if (changed) {
+                await db.collection('masters').doc(currentUser.id).update({ schedule: newSchedule });
+                currentUser.schedule = newSchedule;
             }
         }
 
@@ -173,6 +228,7 @@
                     if (confirm('Запомнить вас? При следующем входе не нужно будет вводить ID.')) {
                         saveUserSession(currentUser.id, 'master');
                     }
+                    await cleanOldAppointments();
                     render('masterDashboard');
                     return;
                 }
@@ -244,7 +300,7 @@
                     saveUserSession(docRef.id, 'master');
                 }
                 
-                alert(`Регистрация завершена! Ваш ID: ${docRef.id}\n${remember ? 'Вы будете входить автоматически.' : 'Сохраните ID для входа.'}`);
+                alert(`✅ Регистрация завершена!\n\nВаш ID: ${docRef.id}\n\n⚠️ ЗАПИШИТЕ СЕБЕ ВАШ ID! Он нужен для входа в приложение.\n${remember ? 'Вы будете входить автоматически.' : ''}`);
                 render('masterDashboard');
             } catch(e) {
                 alert('Ошибка регистрации. Проверьте интернет.');
@@ -289,6 +345,7 @@
                     patronymic: patr,
                     phone: phone,
                     appointmentIds: [],
+                    notifications: [],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
 
@@ -299,7 +356,7 @@
                     saveUserSession(docRef.id, 'client');
                 }
                 
-                alert(`Регистрация завершена! Ваш ID: ${docRef.id}\n${remember ? 'Вы будете входить автоматически.' : 'Сохраните ID для входа.'}`);
+                alert(`✅ Регистрация завершена!\n\nВаш ID: ${docRef.id}\n\n⚠️ ЗАПИШИТЕ СЕБЕ ВАШ ID! Он нужен для входа в приложение.\n${remember ? 'Вы будете входить автоматически.' : ''}`);
                 render('clientDashboard');
             } catch(e) {
                 alert('Ошибка регистрации. Проверьте интернет.');
@@ -311,20 +368,22 @@
             try {
                 const masterDoc = await db.collection('masters').doc(currentUser.id).get();
                 currentUser = { id: masterDoc.id, ...masterDoc.data(), role: 'master' };
+                
+                await cleanOldAppointments();
 
                 const schedule = currentUser.schedule || [];
                 const freeCount = schedule.filter(s => s.isAvailable).length;
                 const pendingCount = schedule.filter(s => !s.isAvailable && !s.isConfirmed).length;
 
-                // Показываем уведомления о новых записях
+                // Уведомления о новых запросах
                 let notificationsHTML = '';
                 const pendingSlots = schedule.filter(s => !s.isAvailable && !s.isConfirmed);
                 if (pendingSlots.length > 0) {
                     notificationsHTML = '<h3 style="margin-top:15px;">🔔 НОВЫЕ ЗАПРОСЫ НА ЗАПИСЬ</h3>';
                     pendingSlots.forEach(s => {
                         const dt = new Date(s.dateTime);
-                        const dateStr = dt.toLocaleDateString('ru-RU');
-                        const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        const dateStr = formatDateMSK(s.dateTime);
+                        const timeStr = formatTimeMSK(s.dateTime);
                         notificationsHTML += `
                             <div class="notification">
                                 <strong>📅 ${dateStr} в ${timeStr}</strong><br>
@@ -348,9 +407,8 @@
                     schedule.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
                     
                     schedule.forEach(s => {
-                        const dt = new Date(s.dateTime);
-                        const dateStr = dt.toLocaleDateString('ru-RU');
-                        const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        const dateStr = formatDateMSK(s.dateTime);
+                        const timeStr = formatTimeMSK(s.dateTime);
                         
                         if (!grouped[dateStr]) grouped[dateStr] = [];
                         grouped[dateStr].push({ ...s, timeStr });
@@ -401,7 +459,6 @@
                     <button class="btn btn-gray" onclick="logout()" style="margin-top:15px;">🚪 ВЫЙТИ</button>
                 `;
 
-                // Запускаем автообновление каждые 30 секунд для проверки новых запросов
                 if (notificationInterval) clearInterval(notificationInterval);
                 notificationInterval = setInterval(async () => {
                     const doc = await db.collection('masters').doc(currentUser.id).get();
@@ -411,6 +468,7 @@
                     
                     if (newPending !== oldPending) {
                         currentUser.schedule = newSchedule;
+                        await cleanOldAppointments();
                         render('masterDashboard');
                     }
                 }, 30000);
@@ -421,7 +479,7 @@
         }
 
         async function createSchedule() {
-            const dateStr = prompt('Введите начальную дату (ДД.ММ.ГГГГ):', new Date().toLocaleDateString('ru-RU'));
+            const dateStr = prompt('Введите начальную дату (ДД.ММ.ГГГГ):', formatDateMSK(new Date()));
             if (!dateStr) return;
             
             const parts = dateStr.split('.');
@@ -445,10 +503,10 @@
             endDate.setMonth(endDate.getMonth() + months);
 
             for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 1)) {
-                for (let h = 9; h <= 18; h++) {
+                for (const hour of SLOT_HOURS) {
                     schedule.push({
                         id: String(id++),
-                        dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), h).toISOString(),
+                        dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour).toISOString(),
                         isAvailable: true,
                         isConfirmed: false,
                         clientName: '',
@@ -482,10 +540,10 @@
 
             let lastId = parseInt(schedule[schedule.length - 1].id);
             
-            for (let h = 9; h <= 18; h++) {
+            for (const hour of SLOT_HOURS) {
                 schedule.push({
                     id: String(++lastId),
-                    dateTime: new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate(), h).toISOString(),
+                    dateTime: new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate(), hour).toISOString(),
                     isAvailable: true,
                     isConfirmed: false,
                     clientName: '',
@@ -511,6 +569,9 @@
             if (slotIndex === -1) return;
 
             const slot = schedule[slotIndex];
+            const dt = new Date(slot.dateTime);
+            const dateStr = formatDateMSK(slot.dateTime);
+            const timeStr = formatTimeMSK(slot.dateTime);
 
             if (confirm) {
                 schedule[slotIndex].isConfirmed = true;
@@ -519,17 +580,16 @@
                     await db.collection('masters').doc(currentUser.id).update({ schedule });
                     currentUser.schedule = schedule;
                     
-                    // Добавляем уведомление клиенту
                     if (slot.clientId) {
                         const clientDoc = await db.collection('clients').doc(slot.clientId).get();
                         if (clientDoc.exists) {
                             const clientData = clientDoc.data();
                             const notifications = clientData.notifications || [];
-                            const dt = new Date(slot.dateTime);
                             notifications.push({
-                                message: `✅ Ваша запись на ${dt.toLocaleDateString('ru-RU')} в ${dt.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})} ПОДТВЕРЖДЕНА!\nМастер: ${currentUser.lastName} ${currentUser.firstName}\n📍 ${currentUser.workLocation}`,
+                                message: `✅ Ваша запись на ${dateStr} в ${timeStr} ПОДТВЕРЖДЕНА!\nМастер: ${currentUser.lastName} ${currentUser.firstName}\n📍 ${currentUser.workLocation}\n\nНапоминание придёт за 24 часа и за 2 часа до записи.`,
                                 date: new Date().toISOString(),
-                                read: false
+                                read: false,
+                                appointmentTime: slot.dateTime
                             });
                             await db.collection('clients').doc(slot.clientId).update({ notifications });
                         }
@@ -555,9 +615,8 @@
                         if (clientDoc.exists) {
                             const clientData = clientDoc.data();
                             const notifications = clientData.notifications || [];
-                            const dt = new Date(slot.dateTime);
                             notifications.push({
-                                message: `❌ Ваша запись на ${dt.toLocaleDateString('ru-RU')} в ${dt.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})} ОТКЛОНЕНА.\nМастер: ${currentUser.lastName} ${currentUser.firstName}\nПожалуйста, выберите другое время.`,
+                                message: `❌ Ваша запись на ${dateStr} в ${timeStr} ОТКЛОНЕНА.\nМастер: ${currentUser.lastName} ${currentUser.firstName}\nПожалуйста, выберите другое время.`,
                                 date: new Date().toISOString(),
                                 read: false
                             });
@@ -585,7 +644,10 @@
                     currentUser = { id: clientDoc.id, ...clientDoc.data(), role: 'client' };
                 }
 
-                // Уведомления клиента
+                // Проверка напоминаний
+                checkReminders();
+
+                // Уведомления
                 const notifications = currentUser.notifications || [];
                 const unreadNotifications = notifications.filter(n => !n.read);
                 
@@ -593,31 +655,28 @@
                 if (unreadNotifications.length > 0) {
                     notificationsHTML = '<h3 style="margin-top:15px;">🔔 УВЕДОМЛЕНИЯ</h3>';
                     unreadNotifications.forEach((n, i) => {
+                        const cls = n.message.includes('✅') ? 'notification-success' : 'notification';
                         notificationsHTML += `
-                            <div class="notification">
+                            <div class="${cls}">
                                 ${n.message.replace(/\n/g, '<br>')}
                                 <br><button class="btn btn-small btn-gray" onclick="markNotificationRead(${i})">OK</button>
                             </div>`;
                     });
                 }
 
-                // Список мастеров
-                let mastersHTML = '<h3 style="margin-top:15px;">👩‍🎨 ДОСТУПНЫЕ МАСТЕРА</h3>';
-                
-                if (allMasters.length === 0) {
-                    mastersHTML += '<p style="text-align:center;color:#999;">Пока нет зарегистрированных мастеров</p>';
-                } else {
-                    allMasters.forEach(m => {
-                        const freeSlots = (m.schedule || []).filter(s => s.isAvailable).length;
-                        mastersHTML += `
-                            <div class="card" style="cursor:pointer;" onclick="showMasterSlots('${m.id}')">
-                                <strong>${m.lastName} ${m.firstName} ${m.patronymic}</strong><br>
-                                📍 ${m.workLocation}<br>
-                                🕐 Свободных слотов: <b>${freeSlots}</b>
-                            </div>
-                        `;
-                    });
-                }
+                // Поиск мастеров
+                let mastersHTML = '<h3 style="margin-top:15px;">👩‍🎨 ПОИСК МАСТЕРА</h3>';
+                mastersHTML += `
+                    <div class="search-box">
+                        <select id="searchType">
+                            <option value="name">По фамилии</option>
+                            <option value="location">По месту работы</option>
+                        </select>
+                        <input id="searchQuery" placeholder="Введите запрос...">
+                        <button class="btn btn-primary btn-small" onclick="searchMasters()" style="width:auto;">🔍</button>
+                    </div>
+                    <div id="mastersList"></div>
+                `;
 
                 // Мои записи
                 let myApptsHTML = '<h3 style="margin-top:15px;">📋 МОИ ЗАПИСИ</h3>';
@@ -627,9 +686,8 @@
                     (m.schedule || []).forEach(s => {
                         if (s.clientId === currentUser.id) {
                             hasAppts = true;
-                            const dt = new Date(s.dateTime);
-                            const dateStr = dt.toLocaleDateString('ru-RU');
-                            const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                            const dateStr = formatDateMSK(s.dateTime);
+                            const timeStr = formatTimeMSK(s.dateTime);
                             const status = s.isConfirmed ? '✅ Подтверждена' : '⏳ Ожидает подтверждения';
                             const cls = s.isConfirmed ? 'free' : 'busy';
                             
@@ -662,9 +720,112 @@
                     <button class="btn btn-gray" onclick="logout()">🚪 ВЫЙТИ</button>
                 `;
 
+                // Показать всех мастеров сразу
+                displayMasters(allMasters);
+
             } catch(e) {
                 console.error('Ошибка:', e);
             }
+        }
+
+        function searchMasters() {
+            const searchType = document.getElementById('searchType').value;
+            const query = document.getElementById('searchQuery').value.trim().toLowerCase();
+            
+            if (!query) {
+                displayMasters(allMasters);
+                return;
+            }
+
+            let filtered;
+            if (searchType === 'name') {
+                filtered = allMasters.filter(m => 
+                    m.lastName.toLowerCase().includes(query)
+                );
+            } else {
+                filtered = allMasters.filter(m => 
+                    m.workLocation.toLowerCase().includes(query)
+                );
+            }
+
+            displayMasters(filtered);
+        }
+
+        function displayMasters(mastersList) {
+            const container = document.getElementById('mastersList');
+            if (!container) return;
+
+            if (mastersList.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#999;padding:10px;">Ничего не найдено</p>';
+                return;
+            }
+
+            container.innerHTML = mastersList.map(m => {
+                const freeSlots = (m.schedule || []).filter(s => s.isAvailable).length;
+                return `
+                    <div class="card" style="cursor:pointer;" onclick="showMasterSlots('${m.id}')">
+                        <strong>${m.lastName} ${m.firstName} ${m.patronymic}</strong><br>
+                        📍 ${m.workLocation}<br>
+                        🕐 Свободных слотов: <b>${freeSlots}</b>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function checkReminders() {
+            if (!currentUser || currentUser.role !== 'client') return;
+            
+            const now = getMSKTime();
+            
+            allMasters.forEach(m => {
+                (m.schedule || []).forEach(s => {
+                    if (s.clientId === currentUser.id && s.isConfirmed) {
+                        const appTime = new Date(s.dateTime);
+                        const diffMs = appTime.getTime() - now.getTime();
+                        const diffHours = diffMs / (1000 * 60 * 60);
+                        
+                        // Проверяем, не пора ли отправить напоминание
+                        if (diffHours <= 24 && diffHours > 23 && !s.reminded24h) {
+                            sendPhoneNotification(`🔔 НАПОМИНАНИЕ!\n\nУ вас запись на маникюр через 24 часа!\n${formatDateMSK(s.dateTime)} в ${formatTimeMSK(s.dateTime)}\nМастер: ${m.lastName} ${m.firstName}\n📍 ${m.workLocation}`);
+                            s.reminded24h = true;
+                        }
+                        
+                        if (diffHours <= 2 && diffHours > 1 && !s.reminded2h) {
+                            sendPhoneNotification(`🔔 СРОЧНОЕ НАПОМИНАНИЕ!\n\nУ вас запись на маникюр через 2 часа!\n${formatDateMSK(s.dateTime)} в ${formatTimeMSK(s.dateTime)}\nМастер: ${m.lastName} ${m.firstName}\n📍 ${m.workLocation}`);
+                            s.reminded2h = true;
+                        }
+                    }
+                });
+            });
+        }
+
+        function sendPhoneNotification(message) {
+            // Используем Web Notification API для пуш-уведомлений на телефон
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('💅 Nail Master', { body: message, icon: '💅' });
+            } else if ('Notification' in window && Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        new Notification('💅 Nail Master', { body: message, icon: '💅' });
+                    }
+                });
+            }
+            
+            // Дополнительно показываем в приложении
+            if (currentUser) {
+                const notifications = currentUser.notifications || [];
+                notifications.push({
+                    message: message,
+                    date: new Date().toISOString(),
+                    read: false
+                });
+                db.collection('clients').doc(currentUser.id).update({ notifications });
+            }
+        }
+
+        // Запрос разрешения на уведомления при загрузке
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
         }
 
         async function markNotificationRead(index) {
@@ -691,8 +852,7 @@
             freeSlots.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
             
             freeSlots.forEach(s => {
-                const dt = new Date(s.dateTime);
-                const dateStr = dt.toLocaleDateString('ru-RU');
+                const dateStr = formatDateMSK(s.dateTime);
                 if (!grouped[dateStr]) grouped[dateStr] = [];
                 grouped[dateStr].push(s);
             });
@@ -701,7 +861,7 @@
             for (const [dateStr, slots] of Object.entries(grouped)) {
                 slotsHTML += `<div class="date-header">📆 ${dateStr}</div>`;
                 slots.forEach(s => {
-                    const timeStr = new Date(s.dateTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                    const timeStr = formatTimeMSK(s.dateTime);
                     slotsHTML += `
                         <div class="schedule-item free" style="cursor:pointer;" onclick="bookSlot('${masterId}', '${s.id}')">
                             <span>🕐 ${timeStr}</span>
@@ -742,8 +902,10 @@
             try {
                 await db.collection('masters').doc(masterId).update({ schedule });
 
-                const dt = new Date(schedule[slotIndex].dateTime);
-                alert(`📩 Запрос на запись отправлен!\n\n${dt.toLocaleString('ru-RU')}\nМастер: ${master.lastName} ${master.firstName}\n📍 ${master.workLocation}\n\nОжидайте подтверждения от мастера. Вы получите уведомление.`);
+                const dateStr = formatDateMSK(schedule[slotIndex].dateTime);
+                const timeStr = formatTimeMSK(schedule[slotIndex].dateTime);
+                
+                alert(`📩 Запрос на запись отправлен!\n\n📅 ${dateStr} в ${timeStr}\n👩‍🎨 Мастер: ${master.lastName} ${master.firstName}\n📍 ${master.workLocation}\n\nОжидайте подтверждения от мастера. Вы получите уведомление.`);
 
                 const popup = document.querySelector('div[style*="rgba(0,0,0,0.5)"]');
                 if (popup) popup.remove();
