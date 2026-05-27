@@ -21,6 +21,7 @@
         }
         .btn-primary { background: linear-gradient(135deg, #E91E63, #C2185B); color: white; }
         .btn-secondary { background: linear-gradient(135deg, #9C27B0, #7B1FA2); color: white; }
+        .btn-info { background: linear-gradient(135deg, #2196F3, #1976D2); color: white; }
         .btn-gray { background: #9E9E9E; color: white; }
         .btn-success { background: #4CAF50; color: white; }
         .btn-danger { background: #F44336; color: white; }
@@ -56,7 +57,7 @@
         .date-header {
             background: #E91E63; color: white; padding: 8px 12px;
             margin-top: 10px; border-radius: 8px 8px 0 0; font-weight: bold;
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px;
         }
         .notification {
             background: #FFF3E0; border-left: 4px solid #FF9800;
@@ -77,13 +78,13 @@
         .search-box select { width: auto; flex: 1; }
         .search-box input { flex: 2; }
         .slot-actions { display: flex; gap: 5px; flex-wrap: wrap; }
-        .time-input-group {
-            display: flex; gap: 10px; align-items: center;
-        }
-        .time-input-group input { flex: 1; }
         .divider {
             border: none; border-top: 1px solid #F8BBD0; margin: 10px 0;
         }
+        .toolbar {
+            display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0;
+        }
+        .toolbar .btn { flex: 1; min-width: 120px; }
     </style>
 </head>
 <body>
@@ -219,9 +220,7 @@
                     <input id="mPatronymic" placeholder="Отчество">
                     <input id="mPhone" placeholder="Номер телефона" type="tel">
                     <input id="mLocation" placeholder="Место работы (адрес)">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="mRemember" checked> Запомнить меня
-                    </label>
+                    <label class="checkbox-label"><input type="checkbox" id="mRemember" checked> Запомнить меня</label>
                     <button class="btn btn-primary" onclick="registerMaster()">✅ ЗАРЕГИСТРИРОВАТЬСЯ</button>
                 </div>
                 <button class="btn btn-gray" onclick="render('start')">⬅ НАЗАД</button>
@@ -229,25 +228,19 @@
         }
 
         async function registerMaster() {
-            const fName = document.getElementById('mFirstName').value.trim();
-            const lName = document.getElementById('mLastName').value.trim();
-            const patr = document.getElementById('mPatronymic').value.trim();
-            const phone = document.getElementById('mPhone').value.trim();
-            const location = document.getElementById('mLocation').value.trim();
+            const f = id => document.getElementById(id).value.trim();
+            const fName = f('mFirstName'), lName = f('mLastName'), patr = f('mPatronymic');
+            const phone = f('mPhone'), location = f('mLocation');
             const remember = document.getElementById('mRemember').checked;
             if (!fName || !lName || !patr || !phone || !location) { alert('Заполните все поля!'); return; }
             try {
-                const masterData = {
-                    firstName: fName, lastName: lName, patronymic: patr,
-                    phone, workLocation: location, schedule: [],
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                const docRef = await db.collection('masters').add(masterData);
-                currentUser = { id: docRef.id, ...masterData, role: 'master' };
-                if (remember) saveUserSession(docRef.id, 'master');
-                alert(`✅ Регистрация завершена!\n\nВаш ID: ${docRef.id}\n\n⚠️ ЗАПИШИТЕ ВАШ ID! Он нужен для входа.`);
+                const data = { firstName: fName, lastName: lName, patronymic: patr, phone, workLocation: location, schedule: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+                const ref = await db.collection('masters').add(data);
+                currentUser = { id: ref.id, ...data, role: 'master' };
+                if (remember) saveUserSession(ref.id, 'master');
+                alert(`✅ Регистрация завершена!\n\nВаш ID: ${ref.id}\n\n⚠️ ЗАПИШИТЕ ВАШ ID!`);
                 render('masterDashboard');
-            } catch(e) { alert('Ошибка регистрации.'); }
+            } catch(e) { alert('Ошибка.'); }
         }
 
         // ============ РЕГИСТРАЦИЯ КЛИЕНТА ============
@@ -259,9 +252,7 @@
                     <input id="cLastName" placeholder="Фамилия">
                     <input id="cPatronymic" placeholder="Отчество">
                     <input id="cPhone" placeholder="Номер телефона" type="tel">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="cRemember" checked> Запомнить меня
-                    </label>
+                    <label class="checkbox-label"><input type="checkbox" id="cRemember" checked> Запомнить меня</label>
                     <button class="btn btn-primary" onclick="registerClient()">✅ ЗАРЕГИСТРИРОВАТЬСЯ</button>
                 </div>
                 <button class="btn btn-gray" onclick="render('start')">⬅ НАЗАД</button>
@@ -269,94 +260,75 @@
         }
 
         async function registerClient() {
-            const fName = document.getElementById('cFirstName').value.trim();
-            const lName = document.getElementById('cLastName').value.trim();
-            const patr = document.getElementById('cPatronymic').value.trim();
-            const phone = document.getElementById('cPhone').value.trim();
+            const f = id => document.getElementById(id).value.trim();
+            const fName = f('cFirstName'), lName = f('cLastName'), patr = f('cPatronymic'), phone = f('cPhone');
             const remember = document.getElementById('cRemember').checked;
             if (!fName || !lName || !patr || !phone) { alert('Заполните все поля!'); return; }
             try {
-                const clientData = {
-                    firstName: fName, lastName: lName, patronymic: patr,
-                    phone, notifications: [],
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                const docRef = await db.collection('clients').add(clientData);
-                currentUser = { id: docRef.id, ...clientData, role: 'client' };
-                if (remember) saveUserSession(docRef.id, 'client');
-                alert(`✅ Регистрация завершена!\n\nВаш ID: ${docRef.id}\n\n⚠️ ЗАПИШИТЕ ВАШ ID! Он нужен для входа.`);
+                const data = { firstName: fName, lastName: lName, patronymic: patr, phone, notifications: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+                const ref = await db.collection('clients').add(data);
+                currentUser = { id: ref.id, ...data, role: 'client' };
+                if (remember) saveUserSession(ref.id, 'client');
+                alert(`✅ Регистрация завершена!\n\nВаш ID: ${ref.id}\n\n⚠️ ЗАПИШИТЕ ВАШ ID!`);
                 render('clientDashboard');
-            } catch(e) { alert('Ошибка регистрации.'); }
+            } catch(e) { alert('Ошибка.'); }
         }
 
         // ============ КАБИНЕТ МАСТЕРА ============
         async function renderMasterDashboard(app) {
             try {
-                const masterDoc = await db.collection('masters').doc(currentUser.id).get();
-                currentUser = { id: masterDoc.id, ...masterDoc.data(), role: 'master' };
-                const schedule = currentUser.schedule || [];
-                const freeCount = schedule.filter(s => s.isAvailable).length;
-                const confirmedCount = schedule.filter(s => !s.isAvailable && s.isConfirmed).length;
-                const pendingCount = schedule.filter(s => !s.isAvailable && !s.isConfirmed).length;
+                const doc = await db.collection('masters').doc(currentUser.id).get();
+                currentUser = { id: doc.id, ...doc.data(), role: 'master' };
+                const sched = currentUser.schedule || [];
+                const free = sched.filter(s => s.isAvailable).length;
+                const conf = sched.filter(s => !s.isAvailable && s.isConfirmed).length;
+                const pend = sched.filter(s => !s.isAvailable && !s.isConfirmed).length;
 
-                // Уведомления
-                let notifHTML = '';
-                const pending = schedule.filter(s => !s.isAvailable && !s.isConfirmed);
+                // Уведомления о запросах
+                let notif = '';
+                const pending = sched.filter(s => !s.isAvailable && !s.isConfirmed);
                 if (pending.length > 0) {
-                    notifHTML = '<h3>🔔 НОВЫЕ ЗАПРОСЫ</h3>';
+                    notif = '<h3>🔔 НОВЫЕ ЗАПРОСЫ</h3>';
                     pending.forEach(s => {
-                        notifHTML += `
-                            <div class="notification">
-                                <strong>📅 ${formatDateMSK(s.dateTime)} ${formatTimeMSK(s.dateTime)}</strong><br>
-                                👤 ${s.clientName} | 📱 ${s.clientPhone}
-                                <div style="margin-top:5px;">
-                                    <button class="btn btn-success btn-small" onclick="confirmAppt('${s.id}',true)">✅</button>
-                                    <button class="btn btn-danger btn-small" onclick="confirmAppt('${s.id}',false)">❌</button>
-                                </div>
-                            </div>`;
+                        notif += `<div class="notification">
+                            <strong>📅 ${formatDateMSK(s.dateTime)} ${formatTimeMSK(s.dateTime)}</strong><br>
+                            👤 ${s.clientName} | 📱 ${s.clientPhone}
+                            <div style="margin-top:5px;"><button class="btn btn-success btn-small" onclick="confirmAppt('${s.id}',true)">✅</button>
+                            <button class="btn btn-danger btn-small" onclick="confirmAppt('${s.id}',false)">❌</button></div></div>`;
                     });
                 }
 
                 // Расписание
-                let schedHTML = '<h3>📅 РАСПИСАНИЕ</h3>';
-                if (schedule.length === 0) {
-                    schedHTML += '<p style="text-align:center;color:#999;">Расписание пусто</p>';
+                let sHTML = '<h3>📅 РАСПИСАНИЕ</h3>';
+                if (sched.length === 0) {
+                    sHTML += '<p style="text-align:center;color:#999;">Пусто</p>';
                 } else {
-                    const grouped = {};
-                    schedule.sort((a,b) => a.dateTime.localeCompare(b.dateTime));
-                    schedule.forEach(s => {
+                    const g = {};
+                    sched.sort((a,b) => a.dateTime.localeCompare(b.dateTime));
+                    sched.forEach(s => {
                         const d = formatDateMSK(s.dateTime);
-                        if (!grouped[d]) grouped[d] = [];
-                        grouped[d].push(s);
+                        if (!g[d]) g[d] = [];
+                        g[d].push(s);
                     });
-                    for (const [date, slots] of Object.entries(grouped)) {
-                        schedHTML += `<div class="date-header">
+                    for (const [date, slots] of Object.entries(g)) {
+                        sHTML += `<div class="date-header">
                             📆 ${date}
-                            <button class="btn btn-small btn-primary" onclick="addSlotToDate('${date}')">+ Слот</button>
+                            <span>
+                                <button class="btn btn-small btn-info" onclick="copyDay('${date}')">📋 Копировать</button>
+                                <button class="btn btn-small btn-primary" onclick="addSlotToDate('${date}')">+</button>
+                            </span>
                         </div>`;
                         slots.forEach(s => {
                             const t = formatTimeMSK(s.dateTime);
                             let cls = 'free', badge = '<span class="badge badge-free">СВОБОДНО</span>';
-                            if (!s.isAvailable && s.isConfirmed) {
-                                cls = 'confirmed';
-                                badge = '<span class="badge badge-confirmed">✅ ПОДТВ.</span>';
-                            } else if (!s.isAvailable && !s.isConfirmed) {
-                                cls = 'busy';
-                                badge = '<span class="badge badge-pending">⏳ ОЖИДАЕТ</span>';
-                            }
+                            if (!s.isAvailable && s.isConfirmed) { cls = 'confirmed'; badge = '<span class="badge badge-confirmed">✅ ПОДТВ.</span>'; }
+                            else if (!s.isAvailable && !s.isConfirmed) { cls = 'busy'; badge = '<span class="badge badge-pending">⏳ ОЖИДАЕТ</span>'; }
                             let info = '';
                             if (!s.isAvailable) info = `<br><small>👤 ${s.clientName} | 📱 ${s.clientPhone}</small>`;
-                            
-                            let actions = '';
-                            if (s.isAvailable) {
-                                actions = `<button class="btn btn-danger btn-small" onclick="deleteSlot('${s.id}')">🗑️</button>`;
-                            }
-                            
-                            schedHTML += `
-                                <div class="schedule-item ${cls}">
-                                    <div style="flex:1;"><strong>${t}</strong> ${badge}${info}</div>
-                                    <div class="slot-actions">${actions}</div>
-                                </div>`;
+                            let act = s.isAvailable ? `<button class="btn btn-danger btn-small" onclick="deleteSlot('${s.id}')">🗑️</button>` : '';
+                            sHTML += `<div class="schedule-item ${cls}">
+                                <div style="flex:1;"><strong>${t}</strong> ${badge}${info}</div>
+                                <div class="slot-actions">${act}</div></div>`;
                         });
                     }
                 }
@@ -366,85 +338,167 @@
                     <div class="card" style="text-align:center;">
                         <h3>${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}</h3>
                         <p>📍 ${currentUser.workLocation}</p>
-                        <p>🟢 ${freeCount} | ✅ ${confirmedCount} | ⏳ ${pendingCount}</p>
+                        <p>🟢 ${free} | ✅ ${conf} | ⏳ ${pend}</p>
                     </div>
-                    <button class="btn btn-primary" onclick="addCustomSlot()">➕ ДОБАВИТЬ СЛОТ</button>
-                    <button class="btn btn-warning" onclick="clearFreeSlots()">🗑️ ОЧИСТИТЬ СВОБОДНЫЕ</button>
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="addCustomSlot()">➕ Слот</button>
+                        <button class="btn btn-info" onclick="copyDayPrompt()">📋 Копировать день</button>
+                        <button class="btn btn-warning" onclick="clearFreeSlots()">🗑️ Очистить</button>
+                    </div>
                     <button class="btn btn-gray" onclick="render('masterDashboard')">🔄 ОБНОВИТЬ</button>
-                    ${notifHTML}
-                    ${schedHTML}
-                    <button class="btn btn-gray" onclick="logout()">🚪 ВЫЙТИ</button>
-                `;
+                    ${notif}
+                    ${sHTML}
+                    <button class="btn btn-gray" onclick="logout()">🚪 ВЫЙТИ</button>`;
             } catch(e) { console.error(e); }
         }
 
-        // ============ УПРАВЛЕНИЕ СЛОТАМИ ============
+        // ============ КОПИРОВАНИЕ ДНЯ ============
+        function copyDayPrompt() {
+            const schedule = currentUser.schedule || [];
+            if (schedule.length === 0) { alert('Сначала создайте хотя бы один слот!'); return; }
+
+            // Собираем уникальные даты
+            const dates = [...new Set(schedule.map(s => formatDateMSK(s.dateTime)))].sort();
+            
+            let dateOptions = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+            
+            const popup = document.createElement('div');
+            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
+            popup.innerHTML = `
+                <div class="card" style="width:90%;max-width:400px;">
+                    <h3>📋 Копировать расписание дня</h3>
+                    <p style="font-size:14px;color:#666;">Слоты выбранного дня будут скопированы на указанное количество месяцев вперёд</p>
+                    <label>Какой день скопировать:</label>
+                    <select id="copySourceDate">${dateOptions}</select>
+                    <label>На сколько месяцев вперёд:</label>
+                    <select id="copyMonths">
+                        <option value="1">1 месяц</option>
+                        <option value="2">2 месяца</option>
+                        <option value="3">3 месяца</option>
+                    </select>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="copySkipWeekends"> Пропускать выходные (сб, вс)
+                    </label>
+                    <button class="btn btn-info" id="doCopyBtn">📋 СКОПИРОВАТЬ</button>
+                    <button class="btn btn-gray" id="cancelCopyBtn">ОТМЕНА</button>
+                </div>`;
+            popup.onclick = function(e) { if (e.target === popup) popup.remove(); };
+            document.body.appendChild(popup);
+
+            document.getElementById('doCopyBtn').onclick = async () => {
+                const sourceDate = document.getElementById('copySourceDate').value;
+                const months = parseInt(document.getElementById('copyMonths').value);
+                const skipWeekends = document.getElementById('copySkipWeekends').checked;
+                
+                await copyDay(sourceDate, months, skipWeekends);
+                popup.remove();
+            };
+            document.getElementById('cancelCopyBtn').onclick = () => popup.remove();
+        }
+
+        async function copyDay(sourceDateStr, months, skipWeekends) {
+            if (!sourceDateStr) return;
+            
+            const schedule = [...(currentUser.schedule || [])];
+            
+            // Находим все свободные слоты исходного дня
+            const sourceSlots = schedule.filter(s => {
+                return formatDateMSK(s.dateTime) === sourceDateStr && s.isAvailable;
+            });
+
+            if (sourceSlots.length === 0) {
+                // Если нет свободных, берём все слоты этого дня (включая занятые, но копируем как свободные)
+                const allDaySlots = schedule.filter(s => formatDateMSK(s.dateTime) === sourceDateStr);
+                if (allDaySlots.length === 0) {
+                    alert('В выбранный день нет слотов!');
+                    return;
+                }
+                
+                // Копируем структуру дня (время слотов)
+                const parts = sourceDateStr.split('.');
+                const sourceDate = new Date(parts[2], parts[1]-1, parts[0]);
+                const endDate = new Date(sourceDate);
+                endDate.setMonth(endDate.getMonth() + months);
+
+                let maxId = schedule.length > 0 ? Math.max(...schedule.map(s => parseInt(s.id))) : 0;
+                let added = 0;
+
+                for (let d = new Date(sourceDate.getTime() + 86400000); d < endDate; d.setDate(d.getDate() + 1)) {
+                    if (skipWeekends && (d.getDay() === 0 || d.getDay() === 6)) continue;
+                    
+                    for (const slot of allDaySlots) {
+                        const origTime = new Date(slot.dateTime);
+                        const newDT = new Date(d.getFullYear(), d.getMonth(), d.getDate(), origTime.getHours(), origTime.getMinutes());
+                        
+                        // Проверяем, нет ли уже слота на это время
+                        const exists = schedule.find(s => formatDateMSK(s.dateTime) === formatDateMSK(newDT.toISOString()));
+                        if (!exists) {
+                            schedule.push({
+                                id: String(++maxId),
+                                dateTime: newDT.toISOString(),
+                                isAvailable: true, isConfirmed: false,
+                                clientName: '', clientPhone: '', clientId: ''
+                            });
+                            added++;
+                        }
+                    }
+                }
+
+                try {
+                    await db.collection('masters').doc(currentUser.id).update({ schedule });
+                    currentUser.schedule = schedule;
+                    alert(`✅ Скопировано! Добавлено ${added} слотов на ${months} мес.`);
+                    render('masterDashboard');
+                } catch(e) { alert('Ошибка.'); }
+                return;
+            }
+
+            // Копируем свободные слоты
+            const parts = sourceDateStr.split('.');
+            const sourceDate = new Date(parts[2], parts[1]-1, parts[0]);
+            const endDate = new Date(sourceDate);
+            endDate.setMonth(endDate.getMonth() + months);
+
+            let maxId = Math.max(...schedule.map(s => parseInt(s.id)));
+            let added = 0;
+
+            for (let d = new Date(sourceDate.getTime() + 86400000); d < endDate; d.setDate(d.getDate() + 1)) {
+                if (skipWeekends && (d.getDay() === 0 || d.getDay() === 6)) continue;
+                
+                for (const slot of sourceSlots) {
+                    const origTime = new Date(slot.dateTime);
+                    const newDT = new Date(d.getFullYear(), d.getMonth(), d.getDate(), origTime.getHours(), origTime.getMinutes());
+                    
+                    const exists = schedule.find(s => formatDateMSK(s.dateTime) === formatDateMSK(newDT.toISOString()));
+                    if (!exists) {
+                        schedule.push({
+                            id: String(++maxId),
+                            dateTime: newDT.toISOString(),
+                            isAvailable: true, isConfirmed: false,
+                            clientName: '', clientPhone: '', clientId: ''
+                        });
+                        added++;
+                    }
+                }
+            }
+
+            try {
+                await db.collection('masters').doc(currentUser.id).update({ schedule });
+                currentUser.schedule = schedule;
+                alert(`✅ Скопировано! Добавлено ${added} слотов на ${months} мес.`);
+                render('masterDashboard');
+            } catch(e) { alert('Ошибка.'); }
+        }
+
+        // ============ ДОБАВЛЕНИЕ СЛОТА ============
         function addCustomSlot() {
             const popup = document.createElement('div');
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
             popup.innerHTML = `
                 <div class="card" style="width:90%;max-width:400px;">
                     <h3>➕ Добавить слот</h3>
-                    <label>Дата:</label>
-                    <input type="date" id="slotDate" value="${new Date().toISOString().split('T')[0]}">
-                    <label>Время:</label>
-                    <input type="time" id="slotTime" value="10:00">
-                    <button class="btn btn-primary" id="saveSlotBtn">СОХРАНИТЬ</button>
-                    <button class="btn btn-gray" id="cancelSlotBtn">ОТМЕНА</button>
-                </div>`;
-            popup.onclick = function(e) { if (e.target === popup) popup.remove(); };
-            document.body.appendChild(popup);
-
-            document.getElementById('saveSlotBtn').onclick = async () => {
-                const date = document.getElementById('slotDate').value;
-                const time = document.getElementById('slotTime').value;
-                if (!date || !time) { alert('Укажите дату и время!'); return; }
-                
-                const dt = new Date(date + 'T' + time + ':00');
-                const schedule = [...(currentUser.schedule || [])];
-                
-                // Проверяем, нет ли уже такого слота
-                const exists = schedule.find(s => {
-                    const sDate = formatDateMSK(s.dateTime);
-                    const sTime = formatTimeMSK(s.dateTime);
-                    return sDate === formatDateMSK(dt.toISOString()) && sTime === formatTimeMSK(dt.toISOString());
-                });
-                
-                if (exists) {
-                    alert('Слот на это время уже существует!');
-                    return;
-                }
-
-                const maxId = schedule.length > 0 ? Math.max(...schedule.map(s => parseInt(s.id))) : 0;
-                schedule.push({
-                    id: String(maxId + 1),
-                    dateTime: dt.toISOString(),
-                    isAvailable: true,
-                    isConfirmed: false,
-                    clientName: '', clientPhone: '', clientId: ''
-                });
-
-                try {
-                    await db.collection('masters').doc(currentUser.id).update({ schedule });
-                    currentUser.schedule = schedule;
-                    popup.remove();
-                    render('masterDashboard');
-                } catch(e) { alert('Ошибка сохранения.'); }
-            };
-            document.getElementById('cancelSlotBtn').onclick = () => popup.remove();
-        }
-
-        function addSlotToDate(dateStr) {
-            const parts = dateStr.split('.');
-            const dateISO = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            
-            const popup = document.createElement('div');
-            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
-            popup.innerHTML = `
-                <div class="card" style="width:90%;max-width:400px;">
-                    <h3>➕ Добавить слот на ${dateStr}</h3>
-                    <label>Время:</label>
-                    <input type="time" id="slotTime" value="10:00">
+                    <label>Дата:</label><input type="date" id="slotDate" value="${new Date().toISOString().split('T')[0]}">
+                    <label>Время:</label><input type="time" id="slotTime" value="10:00">
                     <button class="btn btn-primary" id="saveBtn">СОХРАНИТЬ</button>
                     <button class="btn btn-gray" id="cancelBtn">ОТМЕНА</button>
                 </div>`;
@@ -452,22 +506,18 @@
             document.body.appendChild(popup);
 
             document.getElementById('saveBtn').onclick = async () => {
+                const date = document.getElementById('slotDate').value;
                 const time = document.getElementById('slotTime').value;
-                if (!time) { alert('Укажите время!'); return; }
-                
-                const dt = new Date(dateISO + 'T' + time + ':00');
-                const schedule = [...(currentUser.schedule || [])];
-                const maxId = schedule.length > 0 ? Math.max(...schedule.map(s => parseInt(s.id))) : 0;
-                schedule.push({
-                    id: String(maxId + 1),
-                    dateTime: dt.toISOString(),
-                    isAvailable: true, isConfirmed: false,
-                    clientName: '', clientPhone: '', clientId: ''
-                });
-
+                if (!date || !time) { alert('Укажите дату и время!'); return; }
+                const dt = new Date(date + 'T' + time + ':00');
+                const sched = [...(currentUser.schedule || [])];
+                const exists = sched.find(s => formatDateMSK(s.dateTime) === formatDateMSK(dt.toISOString()) && formatTimeMSK(s.dateTime) === formatTimeMSK(dt.toISOString()));
+                if (exists) { alert('Слот уже есть!'); return; }
+                const maxId = sched.length > 0 ? Math.max(...sched.map(s => parseInt(s.id))) : 0;
+                sched.push({ id: String(maxId+1), dateTime: dt.toISOString(), isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
                 try {
-                    await db.collection('masters').doc(currentUser.id).update({ schedule });
-                    currentUser.schedule = schedule;
+                    await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                    currentUser.schedule = sched;
                     popup.remove();
                     render('masterDashboard');
                 } catch(e) { alert('Ошибка.'); }
@@ -475,83 +525,95 @@
             document.getElementById('cancelBtn').onclick = () => popup.remove();
         }
 
-        async function deleteSlot(slotId) {
-            if (!confirm('Удалить этот слот?')) return;
-            
-            const slot = currentUser.schedule.find(s => s.id === slotId);
-            if (!slot || !slot.isAvailable) {
-                alert('Можно удалить только свободные слоты!');
-                return;
-            }
-
-            const schedule = currentUser.schedule.filter(s => s.id !== slotId);
-            try {
-                await db.collection('masters').doc(currentUser.id).update({ schedule });
-                currentUser.schedule = schedule;
-                render('masterDashboard');
-            } catch(e) { alert('Ошибка удаления.'); }
+        function addSlotToDate(dateStr) {
+            const parts = dateStr.split('.');
+            const dateISO = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            const popup = document.createElement('div');
+            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
+            popup.innerHTML = `
+                <div class="card" style="width:90%;max-width:400px;">
+                    <h3>➕ Слот на ${dateStr}</h3>
+                    <label>Время:</label><input type="time" id="slotTime" value="10:00">
+                    <button class="btn btn-primary" id="saveBtn">СОХРАНИТЬ</button>
+                    <button class="btn btn-gray" id="cancelBtn">ОТМЕНА</button>
+                </div>`;
+            popup.onclick = function(e) { if (e.target === popup) popup.remove(); };
+            document.body.appendChild(popup);
+            document.getElementById('saveBtn').onclick = async () => {
+                const time = document.getElementById('slotTime').value;
+                if (!time) { alert('Укажите время!'); return; }
+                const dt = new Date(dateISO + 'T' + time + ':00');
+                const sched = [...(currentUser.schedule || [])];
+                const maxId = sched.length > 0 ? Math.max(...sched.map(s => parseInt(s.id))) : 0;
+                sched.push({ id: String(maxId+1), dateTime: dt.toISOString(), isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
+                try {
+                    await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                    currentUser.schedule = sched;
+                    popup.remove();
+                    render('masterDashboard');
+                } catch(e) { alert('Ошибка.'); }
+            };
+            document.getElementById('cancelBtn').onclick = () => popup.remove();
         }
 
-        async function clearFreeSlots() {
-            if (!confirm('Удалить ВСЕ свободные слоты? Подтверждённые записи останутся.')) return;
-            
-            const schedule = currentUser.schedule.filter(s => !s.isAvailable);
+        async function deleteSlot(id) {
+            if (!confirm('Удалить слот?')) return;
+            const sched = currentUser.schedule.filter(s => s.id !== id);
             try {
-                await db.collection('masters').doc(currentUser.id).update({ schedule });
-                currentUser.schedule = schedule;
+                await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                currentUser.schedule = sched;
                 render('masterDashboard');
             } catch(e) { alert('Ошибка.'); }
         }
 
-        async function confirmAppt(appId, confirm) {
-            const schedule = [...currentUser.schedule];
-            const idx = schedule.findIndex(s => s.id === appId);
-            if (idx === -1) return;
-            const slot = schedule[idx];
-            const dateStr = formatDateMSK(slot.dateTime);
-            const timeStr = formatTimeMSK(slot.dateTime);
+        async function clearFreeSlots() {
+            if (!confirm('Удалить ВСЕ свободные слоты?')) return;
+            const sched = currentUser.schedule.filter(s => !s.isAvailable);
+            try {
+                await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                currentUser.schedule = sched;
+                render('masterDashboard');
+            } catch(e) { alert('Ошибка.'); }
+        }
 
-            if (confirm) {
-                schedule[idx].isConfirmed = true;
+        async function confirmAppt(id, ok) {
+            const sched = [...currentUser.schedule];
+            const idx = sched.findIndex(s => s.id === id);
+            if (idx === -1) return;
+            const slot = sched[idx];
+            if (ok) {
+                sched[idx].isConfirmed = true;
                 try {
-                    await db.collection('masters').doc(currentUser.id).update({ schedule });
-                    currentUser.schedule = schedule;
+                    await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                    currentUser.schedule = sched;
                     if (slot.clientId) {
-                        const clientDoc = await db.collection('clients').doc(slot.clientId).get();
-                        if (clientDoc.exists) {
-                            const data = clientDoc.data();
-                            const notifs = data.notifications || [];
-                            notifs.push({
-                                message: `✅ Запись на ${dateStr} ${timeStr} ПОДТВЕРЖДЕНА!\nМастер: ${currentUser.lastName} ${currentUser.firstName}\n📍 ${currentUser.workLocation}`,
-                                date: new Date().toISOString(), read: false
-                            });
-                            await db.collection('clients').doc(slot.clientId).update({ notifications: notifs });
+                        const cl = await db.collection('clients').doc(slot.clientId).get();
+                        if (cl.exists) {
+                            const n = cl.data().notifications || [];
+                            n.push({ message: `✅ Запись на ${formatDateMSK(slot.dateTime)} ${formatTimeMSK(slot.dateTime)} ПОДТВЕРЖДЕНА!`, date: new Date().toISOString(), read: false });
+                            await db.collection('clients').doc(slot.clientId).update({ notifications: n });
                         }
                     }
-                    alert('✅ Запись подтверждена!');
+                    alert('✅ Подтверждено!');
                 } catch(e) { alert('Ошибка.'); }
             } else {
-                schedule[idx].isAvailable = true;
-                schedule[idx].isConfirmed = false;
-                schedule[idx].clientName = '';
-                schedule[idx].clientPhone = '';
-                schedule[idx].clientId = '';
+                sched[idx].isAvailable = true;
+                sched[idx].isConfirmed = false;
+                sched[idx].clientName = '';
+                sched[idx].clientPhone = '';
+                sched[idx].clientId = '';
                 try {
-                    await db.collection('masters').doc(currentUser.id).update({ schedule });
-                    currentUser.schedule = schedule;
+                    await db.collection('masters').doc(currentUser.id).update({ schedule: sched });
+                    currentUser.schedule = sched;
                     if (slot.clientId) {
-                        const clientDoc = await db.collection('clients').doc(slot.clientId).get();
-                        if (clientDoc.exists) {
-                            const data = clientDoc.data();
-                            const notifs = data.notifications || [];
-                            notifs.push({
-                                message: `❌ Запись на ${dateStr} ${timeStr} ОТКЛОНЕНА.\nВыберите другое время.`,
-                                date: new Date().toISOString(), read: false
-                            });
-                            await db.collection('clients').doc(slot.clientId).update({ notifications: notifs });
+                        const cl = await db.collection('clients').doc(slot.clientId).get();
+                        if (cl.exists) {
+                            const n = cl.data().notifications || [];
+                            n.push({ message: `❌ Запись на ${formatDateMSK(slot.dateTime)} ${formatTimeMSK(slot.dateTime)} ОТКЛОНЕНА.`, date: new Date().toISOString(), read: false });
+                            await db.collection('clients').doc(slot.clientId).update({ notifications: n });
                         }
                     }
-                    alert('❌ Запись отклонена.');
+                    alert('❌ Отклонено.');
                 } catch(e) { alert('Ошибка.'); }
             }
             render('masterDashboard');
@@ -560,137 +622,112 @@
         // ============ КАБИНЕТ КЛИЕНТА ============
         async function renderClientDashboard(app) {
             try {
-                const mastersSnap = await db.collection('masters').get();
-                allMasters = mastersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                const clientDoc = await db.collection('clients').doc(currentUser.id).get();
-                if (clientDoc.exists) currentUser = { id: clientDoc.id, ...clientDoc.data(), role: 'client' };
+                const ms = await db.collection('masters').get();
+                allMasters = ms.docs.map(d => ({ id: d.id, ...d.data() }));
+                const cl = await db.collection('clients').doc(currentUser.id).get();
+                if (cl.exists) currentUser = { id: cl.id, ...cl.data(), role: 'client' };
 
                 const notifs = currentUser.notifications || [];
                 const unread = notifs.filter(n => !n.read);
-                let notifHTML = '';
+                let nHTML = '';
                 if (unread.length > 0) {
-                    notifHTML = '<h3>🔔 УВЕДОМЛЕНИЯ</h3>';
+                    nHTML = '<h3>🔔 УВЕДОМЛЕНИЯ</h3>';
                     unread.forEach((n, i) => {
-                        const cls = n.message.includes('✅') ? 'notification-success' : 'notification';
-                        notifHTML += `<div class="${cls}">${n.message.replace(/\n/g,'<br>')}<br>
+                        nHTML += `<div class="${n.message.includes('✅')?'notification-success':'notification'}">${n.message.replace(/\n/g,'<br>')}<br>
                             <button class="btn btn-small btn-gray" onclick="markNotif(${i})">OK</button></div>`;
                     });
                 }
 
-                let searchHTML = '<h3>🔍 ПОИСК МАСТЕРА</h3>';
-                searchHTML += `
-                    <div class="search-box">
-                        <select id="searchType"><option value="name">По фамилии</option><option value="location">По месту</option></select>
-                        <input id="searchQuery" placeholder="Поиск...">
-                        <button class="btn btn-primary btn-small" onclick="searchMasters()" style="width:auto;">🔍</button>
-                    </div>
-                    <div id="mastersList"></div>`;
+                let sHTML = '<h3>🔍 ПОИСК МАСТЕРА</h3>';
+                sHTML += `<div class="search-box">
+                    <select id="searchType"><option value="name">По фамилии</option><option value="location">По месту</option></select>
+                    <input id="searchQuery" placeholder="Поиск...">
+                    <button class="btn btn-primary btn-small" onclick="searchMasters()" style="width:auto;">🔍</button>
+                </div><div id="mastersList"></div>`;
 
-                let myHTML = '<h3>📋 МОИ ЗАПИСИ</h3>';
+                let mHTML = '<h3>📋 МОИ ЗАПИСИ</h3>';
                 let has = false;
                 allMasters.forEach(m => {
-                    (m.schedule || []).forEach(s => {
+                    (m.schedule||[]).forEach(s => {
                         if (s.clientId === currentUser.id) {
                             has = true;
-                            const st = s.isConfirmed ? '✅ Подтверждена' : '⏳ Ожидает';
-                            const cls = s.isConfirmed ? 'confirmed' : 'busy';
-                            myHTML += `<div class="schedule-item ${cls}">
+                            mHTML += `<div class="schedule-item ${s.isConfirmed?'confirmed':'busy'}">
                                 <div><strong>${formatDateMSK(s.dateTime)} ${formatTimeMSK(s.dateTime)}</strong><br>
-                                👩‍🎨 ${m.lastName} ${m.firstName}<br>📍 ${m.workLocation}<br>${st}</div></div>`;
+                                👩‍🎨 ${m.lastName} ${m.firstName}<br>📍 ${m.workLocation}<br>
+                                ${s.isConfirmed?'✅ Подтверждена':'⏳ Ожидает'}</div></div>`;
                         }
                     });
                 });
-                if (!has) myHTML += '<p style="text-align:center;color:#999;">Нет записей</p>';
+                if (!has) mHTML += '<p style="text-align:center;color:#999;">Нет записей</p>';
 
                 app.innerHTML = `
                     <h2 class="title" style="font-size:20px;">💅 КАБИНЕТ КЛИЕНТА</h2>
                     <div class="card" style="text-align:center;"><h3>${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}</h3></div>
                     <button class="btn btn-gray" onclick="render('clientDashboard')">🔄 ОБНОВИТЬ</button>
-                    ${notifHTML}
-                    ${searchHTML}
-                    ${myHTML}
+                    ${nHTML}${sHTML}${mHTML}
                     <button class="btn btn-gray" onclick="logout()">🚪 ВЫЙТИ</button>`;
-                
                 displayMasters(allMasters);
             } catch(e) { console.error(e); }
         }
 
         function searchMasters() {
-            const type = document.getElementById('searchType').value;
+            const t = document.getElementById('searchType').value;
             const q = document.getElementById('searchQuery').value.trim().toLowerCase();
-            if (!q) { displayMasters(allMasters); return; }
-            const filtered = type === 'name'
-                ? allMasters.filter(m => m.lastName.toLowerCase().includes(q))
-                : allMasters.filter(m => m.workLocation.toLowerCase().includes(q));
-            displayMasters(filtered);
+            displayMasters(q ? (t==='name' ? allMasters.filter(m => m.lastName.toLowerCase().includes(q)) : allMasters.filter(m => m.workLocation.toLowerCase().includes(q))) : allMasters);
         }
 
         function displayMasters(list) {
             const c = document.getElementById('mastersList');
             if (!c) return;
-            if (list.length === 0) { c.innerHTML = '<p style="text-align:center;color:#999;">Ничего не найдено</p>'; return; }
-            c.innerHTML = list.map(m => {
-                const free = (m.schedule || []).filter(s => s.isAvailable).length;
-                return `<div class="card" style="cursor:pointer;" onclick="showSlots('${m.id}')">
-                    <strong>${m.lastName} ${m.firstName} ${m.patronymic}</strong><br>
-                    📍 ${m.workLocation}<br>🕐 Свободно: <b>${free}</b></div>`;
+            c.innerHTML = list.length === 0 ? '<p style="text-align:center;color:#999;">Ничего не найдено</p>' : list.map(m => {
+                const f = (m.schedule||[]).filter(s => s.isAvailable).length;
+                return `<div class="card" style="cursor:pointer;" onclick="showSlots('${m.id}')"><strong>${m.lastName} ${m.firstName} ${m.patronymic}</strong><br>📍 ${m.workLocation}<br>🕐 ${f}</div>`;
             }).join('');
         }
 
-        function showSlots(masterId) {
-            const m = allMasters.find(x => x.id === masterId);
+        function showSlots(mid) {
+            const m = allMasters.find(x => x.id === mid);
             if (!m) return;
-            const free = (m.schedule || []).filter(s => s.isAvailable);
-            if (free.length === 0) { alert('Нет свободных слотов!'); return; }
-            const grouped = {};
-            free.sort((a,b) => a.dateTime.localeCompare(b.dateTime));
-            free.forEach(s => {
-                const d = formatDateMSK(s.dateTime);
-                if (!grouped[d]) grouped[d] = [];
-                grouped[d].push(s);
-            });
-            let html = '<h3>📅 Выберите время:</h3>';
-            for (const [date, slots] of Object.entries(grouped)) {
-                html += `<div class="date-header">📆 ${date}</div>`;
-                slots.forEach(s => {
-                    html += `<div class="schedule-item free" style="cursor:pointer;" onclick="book('${masterId}','${s.id}')">
-                        <span>🕐 ${formatTimeMSK(s.dateTime)}</span>
-                        <span class="badge badge-free">ЗАПИСАТЬСЯ</span></div>`;
-                });
+            const free = (m.schedule||[]).filter(s => s.isAvailable);
+            if (!free.length) { alert('Нет слотов!'); return; }
+            const g = {};
+            free.sort((a,b)=>a.dateTime.localeCompare(b.dateTime));
+            free.forEach(s => { const d = formatDateMSK(s.dateTime); if (!g[d]) g[d] = []; g[d].push(s); });
+            let h = '<h3>📅 Выберите время:</h3>';
+            for (const [d,ss] of Object.entries(g)) {
+                h += `<div class="date-header">📆 ${d}</div>`;
+                ss.forEach(s => h += `<div class="schedule-item free" style="cursor:pointer;" onclick="book('${mid}','${s.id}')"><span>🕐 ${formatTimeMSK(s.dateTime)}</span><span class="badge badge-free">ЗАПИСАТЬСЯ</span></div>`);
             }
-            const popup = document.createElement('div');
-            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
-            popup.innerHTML = `<div class="card" style="max-height:80vh;overflow-y:auto;width:90%;max-width:400px;">${html}
-                <button class="btn btn-gray" onclick="this.closest('div').parentElement.remove()">ЗАКРЫТЬ</button></div>`;
-            popup.onclick = function(e) { if (e.target === popup) popup.remove(); };
-            document.body.appendChild(popup);
+            const p = document.createElement('div');
+            p.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
+            p.innerHTML = `<div class="card" style="max-height:80vh;overflow-y:auto;width:90%;max-width:400px;">${h}<button class="btn btn-gray" onclick="this.closest('div').parentElement.remove()">ЗАКРЫТЬ</button></div>`;
+            p.onclick = e => { if (e.target===p) p.remove(); };
+            document.body.appendChild(p);
         }
 
-        async function book(masterId, slotId) {
-            const m = allMasters.find(x => x.id === masterId);
-            if (!m) return;
+        async function book(mid, sid) {
+            const m = allMasters.find(x=>x.id===mid);
             const sched = [...m.schedule];
-            const idx = sched.findIndex(s => s.id === slotId);
-            if (idx === -1 || !sched[idx].isAvailable) { alert('Слот занят!'); return; }
-            sched[idx].isAvailable = false;
-            sched[idx].clientName = `${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}`;
-            sched[idx].clientPhone = currentUser.phone;
-            sched[idx].clientId = currentUser.id;
-            sched[idx].isConfirmed = false;
+            const i = sched.findIndex(s=>s.id===sid);
+            if (i===-1||!sched[i].isAvailable) { alert('Занят!'); return; }
+            sched[i].isAvailable = false;
+            sched[i].clientName = `${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}`;
+            sched[i].clientPhone = currentUser.phone;
+            sched[i].clientId = currentUser.id;
+            sched[i].isConfirmed = false;
             try {
-                await db.collection('masters').doc(masterId).update({ schedule: sched });
-                alert(`📩 Запрос отправлен!\n${formatDateMSK(sched[idx].dateTime)} ${formatTimeMSK(sched[idx].dateTime)}\nОжидайте подтверждения.`);
-                const popup = document.querySelector('div[style*="rgba(0,0,0,0.5)"]');
-                if (popup) popup.remove();
+                await db.collection('masters').doc(mid).update({ schedule: sched });
+                alert(`📩 Запрос отправлен!\n${formatDateMSK(sched[i].dateTime)} ${formatTimeMSK(sched[i].dateTime)}\nОжидайте подтверждения.`);
+                document.querySelector('div[style*="rgba(0,0,0,0.5)"]')?.remove();
                 render('clientDashboard');
             } catch(e) { alert('Ошибка.'); }
         }
 
         async function markNotif(i) {
-            const notifs = [...(currentUser.notifications || [])];
-            if (notifs[i]) { notifs[i].read = true; }
-            await db.collection('clients').doc(currentUser.id).update({ notifications: notifs });
-            currentUser.notifications = notifs;
+            const n = [...(currentUser.notifications||[])];
+            if (n[i]) n[i].read = true;
+            await db.collection('clients').doc(currentUser.id).update({ notifications: n });
+            currentUser.notifications = n;
             render('clientDashboard');
         }
 
