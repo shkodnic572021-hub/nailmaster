@@ -47,7 +47,6 @@
         .search-box select { width: auto; flex: 1; }
         .search-box input { flex: 2; }
         .slot-actions { display: flex; gap: 5px; flex-wrap: wrap; }
-        .divider { border: none; border-top: 1px solid #F8BBD0; margin: 10px 0; }
         .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
         .toolbar .btn { flex: 1; min-width: 120px; }
     </style>
@@ -68,11 +67,35 @@
         const db = firebase.firestore();
 
         let currentUser = null, allMasters = [], notificationInterval = null;
-        const MSK_OFFSET = 3;
 
-        function getMSKTime(d = null) { const t = d || new Date(); return new Date(t.getTime() + MSK_OFFSET * 3600000); }
-        function formatDateMSK(d) { return getMSKTime(new Date(d)).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' }); }
-        function formatTimeMSK(d) { return getMSKTime(new Date(d)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }); }
+        // ============ ФУНКЦИИ ВРЕМЕНИ (ИСПРАВЛЕННЫЕ) ============
+        function formatDateMSK(isoString) {
+            const d = new Date(isoString);
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const year = d.getUTCFullYear();
+            return `${day}.${month}.${year}`;
+        }
+
+        function formatTimeMSK(isoString) {
+            const d = new Date(isoString);
+            const hours = String(d.getUTCHours()).padStart(2, '0');
+            const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        // Создание ISO строки из локальной даты и времени (сохраняем как есть, без смещения)
+        function createSlotISO(dateStr, timeStr) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return new Date(Date.UTC(year, month - 1, day, hours, minutes)).toISOString();
+        }
+
+        function createSlotISOFromDMY(dateDMY, timeStr) {
+            const parts = dateDMY.split('.');
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return new Date(Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]), hours, minutes)).toISOString();
+        }
 
         async function loadData() {
             const uid = localStorage.getItem('nailmaster_userId'), role = localStorage.getItem('nailmaster_role');
@@ -239,26 +262,27 @@
         }
 
         function addCustomSlot() {
+            const today = new Date();
+            const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
             const popup = document.createElement('div');
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
-            popup.innerHTML = `<div class="card" style="width:90%;max-width:400px;"><h3>➕ Добавить слот</h3><label>Дата:</label><input type="date" id="slotDate" value="${new Date().toISOString().split('T')[0]}"><label>Время:</label><input type="time" id="slotTime" value="10:00"><button class="btn btn-primary" id="saveBtn">СОХРАНИТЬ</button><button class="btn btn-gray" id="cancelBtn">ОТМЕНА</button></div>`;
+            popup.innerHTML = `<div class="card" style="width:90%;max-width:400px;"><h3>➕ Добавить слот</h3><label>Дата:</label><input type="date" id="slotDate" value="${todayStr}"><label>Время:</label><input type="time" id="slotTime" value="10:00"><button class="btn btn-primary" id="saveBtn">СОХРАНИТЬ</button><button class="btn btn-gray" id="cancelBtn">ОТМЕНА</button></div>`;
             popup.onclick = e => { if (e.target === popup) popup.remove(); };
             document.body.appendChild(popup);
             document.getElementById('saveBtn').onclick = async () => {
                 const date = document.getElementById('slotDate').value, time = document.getElementById('slotTime').value;
                 if (!date || !time) { alert('Укажите дату и время!'); return; }
-                const dt = new Date(date + 'T' + time + ':00+03:00');
+                const iso = createSlotISO(date, time);
                 const sched = [...(currentUser.schedule || [])];
-                if (sched.find(s => formatDateMSK(s.dateTime) === formatDateMSK(dt.toISOString()) && formatTimeMSK(s.dateTime) === formatTimeMSK(dt.toISOString()))) { alert('Слот уже есть!'); return; }
+                if (sched.find(s => formatDateMSK(s.dateTime) === formatDateMSK(iso) && formatTimeMSK(s.dateTime) === formatTimeMSK(iso))) { alert('Слот уже есть!'); return; }
                 const maxId = sched.length > 0 ? Math.max(...sched.map(s => parseInt(s.id))) : 0;
-                sched.push({ id: String(maxId+1), dateTime: dt.toISOString(), isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
+                sched.push({ id: String(maxId+1), dateTime: iso, isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
                 try { await db.collection('masters').doc(currentUser.id).update({ schedule: sched }); currentUser.schedule = sched; popup.remove(); render('masterDashboard'); } catch(e) { alert('Ошибка.'); }
             };
             document.getElementById('cancelBtn').onclick = () => popup.remove();
         }
 
         function addSlotToDate(dateStr) {
-            const parts = dateStr.split('.'), iso = `${parts[2]}-${parts[1]}-${parts[0]}`;
             const popup = document.createElement('div');
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
             popup.innerHTML = `<div class="card" style="width:90%;max-width:400px;"><h3>➕ Слот на ${dateStr}</h3><label>Время:</label><input type="time" id="slotTime" value="10:00"><button class="btn btn-primary" id="saveBtn">СОХРАНИТЬ</button><button class="btn btn-gray" id="cancelBtn">ОТМЕНА</button></div>`;
@@ -267,10 +291,10 @@
             document.getElementById('saveBtn').onclick = async () => {
                 const time = document.getElementById('slotTime').value;
                 if (!time) { alert('Укажите время!'); return; }
-                const dt = new Date(iso + 'T' + time + ':00+03:00');
+                const iso = createSlotISOFromDMY(dateStr, time);
                 const sched = [...(currentUser.schedule || [])];
                 const maxId = sched.length > 0 ? Math.max(...sched.map(s => parseInt(s.id))) : 0;
-                sched.push({ id: String(maxId+1), dateTime: dt.toISOString(), isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
+                sched.push({ id: String(maxId+1), dateTime: iso, isAvailable: true, isConfirmed: false, clientName: '', clientPhone: '', clientId: '' });
                 try { await db.collection('masters').doc(currentUser.id).update({ schedule: sched }); currentUser.schedule = sched; popup.remove(); render('masterDashboard'); } catch(e) { alert('Ошибка.'); }
             };
             document.getElementById('cancelBtn').onclick = () => popup.remove();
