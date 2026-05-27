@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#E91E63">
+    <link rel="manifest" href="manifest.json">
+    <title>Nail Master</title>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: linear-gradient(135deg, #FCE4EC, #F8BBD0); min-height: 100vh; }
+        .container { max-width: 500px; margin: 0 auto; padding: 15px; }
+        .btn {
+            display: block; width: 100%; padding: 14px; margin: 8px 0;
+            border: none; border-radius: 25px; font-size: 16px; font-weight: bold;
+            cursor: pointer; transition: 0.3s; text-align: center;
+        }
+        .btn-primary { background: linear-gradient(135deg, #E91E63, #C2185B); color: white; }
+        .btn-secondary { background: linear-gradient(135deg, #9C27B0, #7B1FA2); color: white; }
+        .btn-gray { background: #9E9E9E; color: white; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-danger { background: #F44336; color: white; }
+        .btn-small { padding: 8px 15px; font-size: 13px; width: auto; display: inline-block; }
+        .card {
+            background: white; border-radius: 15px; padding: 15px;
+            margin: 8px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .title { text-align: center; color: #880E4F; font-size: 26px; font-weight: bold; padding: 15px 0; }
+        .subtitle { text-align: center; color: #AD1457; font-size: 15px; margin-bottom: 15px; }
+        input {
+            width: 100%; padding: 12px; margin: 6px 0; border: 2px solid #F06292;
+            border-radius: 10px; font-size: 15px; outline: none;
+        }
+        .schedule-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; margin: 4px 0; border-radius: 10px; flex-wrap: wrap;
+        }
+        .free { background: #E8F5E9; }
+        .busy { background: #FCE4EC; }
+        .badge {
+            padding: 5px 12px; border-radius: 15px; font-size: 12px; font-weight: bold;
+            display: inline-block;
+        }
+        .badge-free { background: #4CAF50; color: white; }
+        .badge-busy { background: #F44336; color: white; }
+        .badge-pending { background: #FF9800; color: white; }
+        .loading { text-align: center; padding: 20px; color: #999; }
+        .date-header {
+            background: #E91E63; color: white; padding: 8px 12px;
+            margin-top: 10px; border-radius: 8px 8px 0 0; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <div class="loading">Загрузка...</div>
+    </div>
+
+    <script>
+        // ============ КОНФИГУРАЦИЯ FIREBASE ============
+        const firebaseConfig = {
+            apiKey: "AIzaSyDYHksu6Wtkz6FDD4CM-TxzhKRKQf8D9pw",
+            authDomain: "nailmaster-a4676.firebaseapp.com",
+            projectId: "nailmaster-a4676",
+            storageBucket: "nailmaster-a4676.firebasestorage.app",
+            messagingSenderId: "597229983002",
+            appId: "1:597229983002:web:da877bed8e3438f46248a3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // ============ ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ============
+        let currentUser = null;
+        let allMasters = [];
+        let allClients = [];
+
+        // ============ ЗАГРУЗКА ДАННЫХ ============
+        async function loadData() {
+            const mastersSnap = await db.collection('masters').get();
+            allMasters = mastersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            const clientsSnap = await db.collection('clients').get();
+            allClients = clientsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            const savedUserId = localStorage.getItem('nailmaster_userId');
+            const savedRole = localStorage.getItem('nailmaster_role');
+            
+            if (savedUserId && savedRole) {
+                if (savedRole === 'master') {
+                    currentUser = allMasters.find(m => m.id === savedUserId);
+                } else {
+                    currentUser = allClients.find(c => c.id === savedUserId);
+                }
+                if (currentUser) {
+                    currentUser.role = savedRole;
+                }
+            }
+
+            if (currentUser) {
+                render(currentUser.role === 'master' ? 'masterDashboard' : 'clientDashboard');
+            } else {
+                render('start');
+            }
+        }
+
+        // ============ СОХРАНЕНИЕ ПОЛЬЗОВАТЕЛЯ ============
+        function saveUserSession(userId, role) {
+            localStorage.setItem('nailmaster_userId', userId);
+            localStorage.setItem('nailmaster_role', role);
+        }
+
+        function clearSession() {
+            localStorage.removeItem('nailmaster_userId');
+            localStorage.removeItem('nailmaster_role');
+            currentUser = null;
+        }
+
+        // ============ ОТОБРАЖЕНИЕ ============
+        function render(page) {
+            const app = document.getElementById('app');
+            switch(page) {
+                case 'start': renderStart(app); break;
+                case 'masterRegister': renderMasterRegister(app); break;
+                case 'clientRegister': renderClientRegister(app); break;
+                case 'masterDashboard': renderMasterDashboard(app); break;
+                case 'clientDashboard': renderClientDashboard(app); break;
+            }
+        }
+
+        function renderStart(app) {
+            app.innerHTML = `
+                <div style="text-align:center; padding-top:40px;">
+                    <div style="font-size:70px;">💅</div>
+                    <h1 class="title">NAIL MASTER</h1>
+                    <p class="subtitle">Запись на маникюр легко и удобно</p>
+                    <button class="btn btn-primary" onclick="render('masterRegister')">👩‍🎨 Я МАСТЕР</button>
+                    <button class="btn btn-secondary" onclick="render('clientRegister')">💅 Я КЛИЕНТ</button>
+                    <button class="btn btn-gray" onclick="showLogin()">🔑 УЖЕ ЕСТЬ ID</button>
+                </div>
+            `;
+        }
+
+        async function showLogin() {
+            const id = prompt('Введите ваш ID:');
+            if (!id) return;
+
+            const masterDoc = await db.collection('masters').doc(id).get();
+            if (masterDoc.exists) {
+                currentUser = { id: masterDoc.id, ...masterDoc.data(), role: 'master' };
+                saveUserSession(currentUser.id, 'master');
+                render('masterDashboard');
+                return;
+            }
+
+            const clientDoc = await db.collection('clients').doc(id).get();
+            if (clientDoc.exists) {
+                currentUser = { id: clientDoc.id, ...clientDoc.data(), role: 'client' };
+                saveUserSession(currentUser.id, 'client');
+                render('clientDashboard');
+                return;
+            }
+
+            alert('Пользователь с таким ID не найден!');
+        }
+
+        // ============ РЕГИСТРАЦИЯ МАСТЕРА ============
+        function renderMasterRegister(app) {
+            app.innerHTML = `
+                <h2 class="title" style="font-size:22px;">РЕГИСТРАЦИЯ МАСТЕРА</h2>
+                <div class="card">
+                    <input id="mFirstName" placeholder="Имя">
+                    <input id="mLastName" placeholder="Фамилия">
+                    <input id="mPatronymic" placeholder="Отчество">
+                    <input id="mPhone" placeholder="Номер телефона" type="tel">
+                    <input id="mLocation" placeholder="Место работы (адрес)">
+                    <button class="btn btn-primary" onclick="registerMaster()">✅ ЗАРЕГИСТРИРОВАТЬСЯ</button>
+                </div>
+                <button class="btn btn-gray" onclick="render('start')">⬅ НАЗАД</button>
+            `;
+        }
+
+        async function registerMaster() {
+            const fName = document.getElementById('mFirstName').value.trim();
+            const lName = document.getElementById('mLastName').value.trim();
+            const patr = document.getElementById('mPatronymic').value.trim();
+            const phone = document.getElementById('mPhone').value.trim();
+            const location = document.getElementById('mLocation').value.trim();
+
+            if (!fName || !lName || !patr || !phone || !location) {
+                alert('Заполните все поля!');
+                return;
+            }
+
+            const masterData = {
+                firstName: fName,
+                lastName: lName,
+                patronymic: patr,
+                phone: phone,
+                workLocation: location,
+                schedule: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            const docRef = await db.collection('masters').add(masterData);
+            currentUser = { id: docRef.id, ...masterData, role: 'master' };
+            saveUserSession(docRef.id, 'master');
+            
+            alert(`Регистрация завершена! Ваш ID: ${docRef.id}\nСохраните его для входа!`);
+            render('masterDashboard');
+        }
+
+        // ============ РЕГИСТРАЦИЯ КЛИЕНТА ============
+        function renderClientRegister(app) {
+            app.innerHTML = `
+                <h2 class="title" style="font-size:22px;">РЕГИСТРАЦИЯ КЛИЕНТА</h2>
+                <div class="card">
+                    <input id="cFirstName" placeholder="Имя">
+                    <input id="cLastName" placeholder="Фамилия">
+                    <input id="cPatronymic" placeholder="Отчество">
+                    <input id="cPhone" placeholder="Номер телефона" type="tel">
+                    <button class="btn btn-primary" onclick="registerClient()">✅ ЗАРЕГИСТРИРОВАТЬСЯ</button>
+                </div>
+                <button class="btn btn-gray" onclick="render('start')">⬅ НАЗАД</button>
+            `;
+        }
+
+        async function registerClient() {
+            const fName = document.getElementById('cFirstName').value.trim();
+            const lName = document.getElementById('cLastName').value.trim();
+            const patr = document.getElementById('cPatronymic').value.trim();
+            const phone = document.getElementById('cPhone').value.trim();
+
+            if (!fName || !lName || !patr || !phone) {
+                alert('Заполните все поля!');
+                return;
+            }
+
+            const clientData = {
+                firstName: fName,
+                lastName: lName,
+                patronymic: patr,
+                phone: phone,
+                appointmentIds: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            const docRef = await db.collection('clients').add(clientData);
+            currentUser = { id: docRef.id, ...clientData, role: 'client' };
+            saveUserSession(docRef.id, 'client');
+            
+            alert(`Регистрация завершена! Ваш ID: ${docRef.id}\nСохраните его для входа!`);
+            render('clientDashboard');
+        }
+
+        // ============ КАБИНЕТ МАСТЕРА ============
+        async function renderMasterDashboard(app) {
+            const masterDoc = await db.collection('masters').doc(currentUser.id).get();
+            currentUser = { id: masterDoc.id, ...masterDoc.data(), role: 'master' };
+
+            const schedule = currentUser.schedule || [];
+            const freeCount = schedule.filter(s => s.isAvailable).length;
+            const pendingCount = schedule.filter(s => !s.isAvailable && !s.isConfirmed).length;
+
+            let scheduleHTML = '<h3 style="margin-top:15px;">📅 РАСПИСАНИЕ</h3>';
+            
+            if (schedule.length === 0) {
+                scheduleHTML += '<p style="text-align:center;color:#999;">Расписание не создано</p>';
+            } else {
+                const grouped = {};
+                schedule.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+                
+                schedule.forEach(s => {
+                    const dt = new Date(s.dateTime);
+                    const dateStr = dt.toLocaleDateString('ru-RU');
+                    const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                    
+                    if (!grouped[dateStr]) grouped[dateStr] = [];
+                    grouped[dateStr].push({ ...s, timeStr });
+                });
+
+                for (const [dateStr, slots] of Object.entries(grouped)) {
+                    scheduleHTML += `<div class="date-header">📆 ${dateStr}</div>`;
+                    
+                    slots.forEach(s => {
+                        const cls = s.isAvailable ? 'free' : 'busy';
+                        let badge;
+                        if (s.isAvailable) {
+                            badge = '<span class="badge badge-free">СВОБОДНО</span>';
+                        } else if (s.isConfirmed) {
+                            badge = '<span class="badge badge-free">✅ ПОДТВ.</span>';
+                        } else {
+                            badge = '<span class="badge badge-pending">⏳ ОЖИДАЕТ</span>';
+                        }
+
+                        let clientInfo = '';
+                        if (!s.isAvailable && s.clientName) {
+                            clientInfo = `<br><small>👤 ${s.clientName} | 📱 ${s.clientPhone}</small>`;
+                        }
+
+                        let actions = '';
+                        if (!s.isAvailable && !s.isConfirmed) {
+                            actions = `
+                                <div style="margin-top:5px;">
+                                    <button class="btn btn-success btn-small" onclick="confirmAppt('${s.id}', true)">✅ Подтвердить</button>
+                                    <button class="btn btn-danger btn-small" onclick="confirmAppt('${s.id}', false)">❌ Отклонить</button>
+                                </div>`;
+                        }
+
+                        scheduleHTML += `
+                            <div class="schedule-item ${cls}">
+                                <div style="flex:1;">
+                                    <strong>${s.timeStr}</strong> ${badge}
+                                    ${clientInfo}
+                                </div>
+                                ${actions}
+                            </div>`;
+                    });
+                }
+            }
+
+            app.innerHTML = `
+                <h2 class="title" style="font-size:20px;">👩‍🎨 КАБИНЕТ МАСТЕРА</h2>
+                <div class="card" style="text-align:center;">
+                    <h3>${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}</h3>
+                    <p>📍 ${currentUser.workLocation}</p>
+                    <p>🟢 Свободно: ${freeCount} | 🟡 Ожидают: ${pendingCount}</p>
+                </div>
+                <button class="btn btn-primary" onclick="createSchedule()">➕ СОЗДАТЬ РАСПИСАНИЕ</button>
+                <button class="btn btn-secondary" onclick="extendSchedule()">📊 ПРОДЛИТЬ НА +1 ДЕНЬ</button>
+                <div style="max-height:50vh; overflow-y:auto;">${scheduleHTML}</div>
+                <button class="btn btn-gray" onclick="logout()" style="margin-top:15px;">🚪 ВЫЙТИ</button>
+            `;
+        }
+
+        async function createSchedule() {
+            const dateStr = prompt('Введите начальную дату (ДД.ММ.ГГГГ):', '01.01.2025');
+            if (!dateStr) return;
+            
+            const parts = dateStr.split('.');
+            const startDate = new Date(parts[2], parts[1] - 1, parts[0]);
+            
+            if (isNaN(startDate.getTime())) {
+                alert('Неверный формат даты!');
+                return;
+            }
+            
+            const monthsStr = prompt('На сколько месяцев? (1-3):', '1');
+            const months = parseInt(monthsStr);
+            if (isNaN(months) || months < 1 || months > 3) {
+                alert('Введите число от 1 до 3');
+                return;
+            }
+
+            const schedule = [];
+            let id = 1;
+            const endDate = new Date(startDate);
+            endDate.setMonth(endDate.getMonth() + months);
+
+            for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 1)) {
+                for (let h = 9; h <= 18; h++) {
+                    schedule.push({
+                        id: String(id++),
+                        dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), h).toISOString(),
+                        isAvailable: true,
+                        isConfirmed: false,
+                        clientName: '',
+                        clientPhone: '',
+                        clientId: ''
+                    });
+                }
+            }
+
+            await db.collection('masters').doc(currentUser.id).update({ schedule });
+            alert(`Расписание создано на ${months} мес. (${schedule.length} слотов)`);
+            render('masterDashboard');
+        }
+
+        async function extendSchedule() {
+            const schedule = currentUser.schedule || [];
+            if (schedule.length === 0) {
+                alert('Сначала создайте расписание!');
+                return;
+            }
+
+            const lastSlot = schedule[schedule.length - 1];
+            const lastDate = new Date(lastSlot.dateTime);
+            const newDate = new Date(lastDate);
+            newDate.setDate(newDate.getDate() + 1);
+
+            let lastId = parseInt(schedule[schedule.length - 1].id);
+            
+            for (let h = 9; h <= 18; h++) {
+                schedule.push({
+                    id: String(++lastId),
+                    dateTime: new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate(), h).toISOString(),
+                    isAvailable: true,
+                    isConfirmed: false,
+                    clientName: '',
+                    clientPhone: '',
+                    clientId: ''
+                });
+            }
+
+            await db.collection('masters').doc(currentUser.id).update({ schedule });
+            alert('Расписание продлено на 1 день!');
+            render('masterDashboard');
+        }
+
+        async function confirmAppt(appId, confirm) {
+            const schedule = [...currentUser.schedule];
+            const slotIndex = schedule.findIndex(s => s.id === appId);
+            
+            if (slotIndex === -1) return;
+
+            if (confirm) {
+                schedule[slotIndex].isConfirmed = true;
+            } else {
+                schedule[slotIndex].isAvailable = true;
+                schedule[slotIndex].isConfirmed = false;
+                schedule[slotIndex].clientName = '';
+                schedule[slotIndex].clientPhone = '';
+                schedule[slotIndex].clientId = '';
+            }
+
+            await db.collection('masters').doc(currentUser.id).update({ schedule });
+            alert(confirm ? '✅ Запись подтверждена!' : '❌ Запись отклонена. Слот освобождён.');
+            render('masterDashboard');
+        }
+
+        // ============ КАБИНЕТ КЛИЕНТА ============
+        async function renderClientDashboard(app) {
+            const mastersSnap = await db.collection('masters').get();
+            allMasters = mastersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            const clientDoc = await db.collection('clients').doc(currentUser.id).get();
+            currentUser = { id: clientDoc.id, ...clientDoc.data(), role: 'client' };
+
+            let mastersHTML = '<h3 style="margin-top:15px;">👩‍🎨 ДОСТУПНЫЕ МАСТЕРА</h3>';
+            
+            if (allMasters.length === 0) {
+                mastersHTML += '<p style="text-align:center;color:#999;">Пока нет зарегистрированных мастеров</p>';
+            } else {
+                allMasters.forEach(m => {
+                    const freeSlots = (m.schedule || []).filter(s => s.isAvailable).length;
+                    mastersHTML += `
+                        <div class="card" style="cursor:pointer;" onclick="showMasterSlots('${m.id}')">
+                            <strong>${m.lastName} ${m.firstName} ${m.patronymic}</strong><br>
+                            📍 ${m.workLocation}<br>
+                            🕐 Свободных слотов: <b>${freeSlots}</b>
+                        </div>
+                    `;
+                });
+            }
+
+            let myApptsHTML = '<h3 style="margin-top:15px;">📋 МОИ ЗАПИСИ</h3>';
+            let hasAppts = false;
+            
+            allMasters.forEach(m => {
+                (m.schedule || []).forEach(s => {
+                    if (s.clientId === currentUser.id) {
+                        hasAppts = true;
+                        const dt = new Date(s.dateTime);
+                        const dateStr = dt.toLocaleDateString('ru-RU');
+                        const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        const status = s.isConfirmed ? '✅ Подтверждена' : '⏳ Ожидает подтверждения';
+                        const cls = s.isConfirmed ? 'free' : 'busy';
+                        
+                        myApptsHTML += `
+                            <div class="schedule-item ${cls}">
+                                <div>
+                                    <strong>${dateStr} ${timeStr}</strong><br>
+                                    👩‍🎨 ${m.lastName} ${m.firstName}<br>
+                                    📍 ${m.workLocation}<br>
+                                    ${status}
+                                </div>
+                            </div>`;
+                    }
+                });
+            });
+            
+            if (!hasAppts) {
+                myApptsHTML += '<p style="text-align:center;color:#999;">У вас нет активных записей</p>';
+            }
+
+            app.innerHTML = `
+                <h2 class="title" style="font-size:20px;">💅 КАБИНЕТ КЛИЕНТА</h2>
+                <div class="card" style="text-align:center;">
+                    <h3>${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}</h3>
+                </div>
+                ${mastersHTML}
+                ${myApptsHTML}
+                <button class="btn btn-gray" onclick="logout()">🚪 ВЫЙТИ</button>
+            `;
+        }
+
+        function showMasterSlots(masterId) {
+            const master = allMasters.find(m => m.id === masterId);
+            if (!master) return;
+            
+            const freeSlots = (master.schedule || []).filter(s => s.isAvailable);
+            if (freeSlots.length === 0) {
+                alert('У мастера нет свободных слотов!');
+                return;
+            }
+
+            const grouped = {};
+            freeSlots.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+            
+            freeSlots.forEach(s => {
+                const dt = new Date(s.dateTime);
+                const dateStr = dt.toLocaleDateString('ru-RU');
+                if (!grouped[dateStr]) grouped[dateStr] = [];
+                grouped[dateStr].push(s);
+            });
+
+            let slotsHTML = '<h3 style="margin-bottom:10px;">📅 Выберите время:</h3>';
+            for (const [dateStr, slots] of Object.entries(grouped)) {
+                slotsHTML += `<div class="date-header">📆 ${dateStr}</div>`;
+                slots.forEach(s => {
+                    const timeStr = new Date(s.dateTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                    slotsHTML += `
+                        <div class="schedule-item free" style="cursor:pointer;" onclick="bookSlot('${masterId}', '${s.id}')">
+                            <span>🕐 ${timeStr}</span>
+                            <span class="badge badge-free">ЗАПИСАТЬСЯ</span>
+                        </div>`;
+                });
+            }
+
+            const popup = document.createElement('div');
+            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:center;justify-content:center;';
+            popup.innerHTML = `
+                <div class="card" style="max-height:80vh;overflow-y:auto;width:90%;max-width:400px;">
+                    ${slotsHTML}
+                    <button class="btn btn-gray" onclick="this.closest('div').parentElement.remove()">ЗАКРЫТЬ</button>
+                </div>`;
+            popup.onclick = function(e) { if (e.target === popup) popup.remove(); };
+            document.body.appendChild(popup);
+        }
+
+        async function bookSlot(masterId, slotId) {
+            const master = allMasters.find(m => m.id === masterId);
+            if (!master) return;
+            
+            const schedule = [...master.schedule];
+            const slotIndex = schedule.findIndex(s => s.id === slotId);
+            
+            if (slotIndex === -1 || !schedule[slotIndex].isAvailable) {
+                alert('Этот слот уже занят!');
+                return;
+            }
+
+            schedule[slotIndex].isAvailable = false;
+            schedule[slotIndex].clientName = `${currentUser.lastName} ${currentUser.firstName} ${currentUser.patronymic}`;
+            schedule[slotIndex].clientPhone = currentUser.phone;
+            schedule[slotIndex].clientId = currentUser.id;
+            schedule[slotIndex].isConfirmed = false;
+
+            await db.collection('masters').doc(masterId).update({ schedule });
+
+            const dt = new Date(schedule[slotIndex].dateTime);
+            alert(`✅ Вы записаны!\n${dt.toLocaleString('ru-RU')}\nМастер: ${master.lastName} ${master.firstName}\nОжидайте подтверждения от мастера.`);
+
+            const popup = document.querySelector('div[style*="rgba(0,0,0,0.5)"]');
+            if (popup) popup.remove();
+
+            render('clientDashboard');
+        }
+
+        function logout() {
+            clearSession();
+            render('start');
+        }
+
+        // ============ ЗАПУСК ============
+        loadData();
+    </script>
+</body>
+</html>
